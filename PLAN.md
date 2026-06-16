@@ -187,24 +187,24 @@ Two commits on the fork:
 1.13 Configure per-mailbox signatures in Agentic Inbox settings
 1.14 Validate: send test email to each mailbox, verify receipt, test send, test web UI
 
-**Definition of Done:**
-- [ ] Agentic Inbox deployed and accessible at `https://ai.nimblersoft.com`
-- [ ] Multi-domain config active (DOMAINS lists `ai.nimblersoft.com` + the two deferred domains, but only `ai.nimblersoft.com` is cut over)
-- [ ] Cloudflare Access configured (POLICY_AUD + TEAM_DOMAIN via Infisical)
-- [ ] CF Access Service Token created and stored in Infisical
-- [ ] Webhook secrets configured (WEBHOOK_URL + WEBHOOK_SECRET via Infisical)
-- [ ] Email Routing catch-all rule active for `ai.nimblersoft.com` (and ONLY that domain)
-- [ ] `ericmaster.ninja` + `meliruns.com` MX confirmed UNCHANGED (still Zoho) — cutover deferred to Phase 4
-- [ ] DNS coexistence verified on `ai.nimblersoft.com`: web UI loads AND inbound mail routes
-- [ ] Email Service verified for outbound sending on `ai.nimblersoft.com` (SPF/DKIM)
-- [ ] Test mailboxes created for sofia.luz@ai.nimblersoft.com and silas.vertiz@ai.nimblersoft.com
-- [ ] Per-mailbox signatures configured
-- [ ] Built-in AI agent disabled (no auto-draft on new email)
-- [ ] Inbound: test email received, webhook fires, visible in web UI
-- [ ] Outbound: test email sent (both sync and async modes) and received at external address
-- [ ] Eric validates: sends and receives test emails personally
-- [ ] `AGENTS.md` created in project root
-- [ ] nimblersoft.com Google Workspace MX records confirmed UNMODIFIED
+**Definition of Done:** (status as of 2026-06-16 — see Execution Notes above)
+- [x] Agentic Inbox deployed and accessible at `https://ai.nimblersoft.com` (HTTP/web UI behind Access; 302→Access login confirmed)
+- [x] Multi-domain config active (DOMAINS lists `ai.nimblersoft.com` + the two deferred domains, but only `ai.nimblersoft.com` is cut over)
+- [x] Cloudflare Access configured (POLICY_AUD + TEAM_DOMAIN via Infisical)
+- [x] CF Access Service Token created and stored in Infisical (verified 200 against live API)
+- [x] Webhook secrets configured (WEBHOOK_URL + WEBHOOK_SECRET via Infisical + Worker)
+- [ ] ~~Email Routing catch-all rule~~ → **BLOCKED** (apex-MX wizard). Plan revised to literal per-mailbox rules; needs zone-strategy decision first.
+- [x] `ericmaster.ninja` + `meliruns.com` MX confirmed UNCHANGED (still Zoho) — cutover deferred to Phase 4
+- [~] DNS coexistence on `ai.nimblersoft.com`: **web UI loads ✅** (proxied AAAA + MX coexist); **inbound routing ⛔ blocked**
+- [x] Email Service verified for outbound sending on `ai.nimblersoft.com` (DKIM/SPF/DMARC via `cf-bounce.*`; status syncing→verified)
+- [ ] Test mailboxes created for sofia.luz@ / silas.vertiz@ai.nimblersoft.com — pending Step G
+- [ ] Per-mailbox signatures configured — pending Step G
+- [x] Built-in AI agent disabled (fork commit 47ef682 removes the auto-draft trigger)
+- [ ] Inbound: test email received, webhook fires, visible in web UI — **blocked on Step G**
+- [ ] Outbound: test email sent (both sync and async modes) and received externally — pending Step G
+- [ ] Eric validates: sends and receives test emails personally — pending Step G
+- [x] `AGENTS.md` created in project root
+- [x] nimblersoft.com Google Workspace MX records confirmed UNMODIFIED (apex MX = aspmx.l.google.com, 1 SPF record, zero Cloudflare at apex)
 
 **Risk Mitigation:**
 - OpenMail stays operational for the OTHER OpenMail mailboxes during Phase 1, but `ai.nimblersoft.com` itself is a **hard MX cutover** (single MX). Validate on a test address/subdomain before flipping the live MX; rollback = repoint MX to Mailgun.
@@ -212,6 +212,29 @@ Two commits on the fork:
 - Fork patches are small (~82 lines total) — easy to audit and revert
 - Google Workspace MX on nimblersoft.com must NOT be touched
 - `ericmaster.ninja` + `meliruns.com` stay on Zoho until Phase 4 — Phase 1 must not touch their MX/Email Routing
+
+**Execution Notes — Live Infra (2026-06-16, supervised):**
+
+Steps **1.5–1.10 + 1.11 done; 1.9 (inbound Email Routing) BLOCKED; 1.12–1.14 pending.**
+
+Done & verified:
+- **R2** bucket `agentic-inbox` created. **Worker deployed** (`agentic-inbox`, all bindings: MAILBOX/EMAIL_AGENT/EMAIL_MCP DOs, EMAIL send, BUCKET, AI). `DOMAINS=ai.nimblersoft.com,ericmaster.ninja,meliruns.com`.
+- **Cloudflare Access:** self-hosted app `Agentic Inbox` → `ai.nimblersoft.com`, `POLICY_AUD=6189a26a…`, `TEAM_DOMAIN=https://nimblersoft.cloudflareaccess.com`. Service token `agentic-inbox-bridge` + 2 policies (Eric email; bridge service-token non_identity). Service token verified 200 against live `/api/v1/config`.
+- **Secrets** (Worker `wrangler secret put` + mirrored to Infisical **Agentic Inbox/prod**): `POLICY_AUD`, `TEAM_DOMAIN`, `WEBHOOK_URL=https://mail-bridge.nimblersoft.com/webhooks/agentic-inbox`, `WEBHOOK_SECRET` (random). Bridge service-token creds in Infisical as `CF_ACCESS_CLIENT_ID`/`CF_ACCESS_CLIENT_SECRET`.
+- **Custom domain:** `ai.nimblersoft.com` → Worker via Workers Domains API (proxied AAAA `100::`), coexists with MX. NOTE: `@cloudflare/vite-plugin` strips `routes` from the generated deploy config, so custom domains are API-managed, not via `wrangler.jsonc`.
+- **Email Sending (outbound):** `ai.nimblersoft.com` onboarded (dashboard). CF isolated auth under `cf-bounce.ai.nimblersoft.com` (own SPF→cloudflare, MX→route*.mx.cloudflare.net for bounces) + DKIM `cf-bounce._domainkey.ai.nimblersoft.com` + `_dmarc.ai.nimblersoft.com p=reject`. **No SPF collision** — the `ai.nimblersoft.com` SPF (mailgun) was left untouched.
+- **Credentials:** scoped `CLOUDFLARE_EMAIL_API_TOKEN` in Infisical **Nimblerbox/dev** (DNS:Edit + Email Routing Rules:Edit + Email Sending:Edit + Email Routing Addresses:Edit, all zones + account). The wrangler OAuth token lacks `email_*:write`; the broad `CLOUDFLARE_API_TOKEN` lacks email perms.
+
+DNS before/after on `ai.nimblersoft.com`: MX unchanged (mailgun, prio 10); **added** proxied AAAA `100::` (web UI) + `cf-bounce.*` sending records. Apex `nimblersoft.com` MX = `aspmx.l.google.com` **UNCHANGED**. Zoho domains UNCHANGED.
+
+**BLOCKER — Step 1.9 (inbound Email Routing):** `ai.nimblersoft.com` is a **subdomain inside the `nimblersoft.com` zone** (no separate zone). Cloudflare's Email Routing **enable wizard is zone-level and forces apex records** — it wanted to add `nimblersoft.com` MX→`route1/2/3.mx.cloudflare.net` (a mail-loss fallback trap behind Google's prio-0 MX) **and a duplicate apex SPF** (`v=spf1 include:_spf.mx.cloudflare.net` → two SPF records = permerror, degrades Google Workspace SPF). Enabling routing is **not exposed as an API-token permission** (only "Email Routing Rules" exists, which manages rules but not the enable toggle), so it can't be done apex-safely via the token. **Stopped per guardrail 1** (never touch `nimblersoft.com` apex MX).
+
+**Recommended resolution (decide before resuming G):**
+1. **Preferred — make `ai.nimblersoft.com` its own Cloudflare zone** (subdomain zone via NS delegation from `nimblersoft.com`). Then Email Routing operates on `ai.nimblersoft.com`'s *own* apex — MX live on `ai.nimblersoft.com`, fully isolated from `nimblersoft.com`/Google. Migration cost: re-create the Worker custom domain + Email Sending onboarding in the new zone.
+2. **Quick — enable via wizard, then surgically delete the CF apex MX + dup SPF + DKIM** (restores apex to Google baseline; routing-enabled flag persists; ~seconds window, low risk given Google prio-0 + DMARC p=none). Requires explicit apex-modification authorization.
+3. **API — `wrangler login` to grant `email_routing:write`, then enable with `skip_wizard`** (may avoid apex DNS entirely; headless OAuth-callback friction).
+
+After G is unblocked: literal per-mailbox routing rules (`sofia.luz@`/`silas.vertiz@ → Worker`) instead of a zone-wide catch-all (avoids intercepting the `cf-bounce` MX); inbound handler has **no domain guard** — it stores only for addresses with an existing mailbox. Cutover = delete `ai.nimblersoft.com` mailgun MX (Eric authorized); rollback = re-add `mxa/mxb.eu.mailgun.org` prio 10.
 
 ---
 
@@ -424,7 +447,7 @@ Two commits on the fork:
 | Phase | Status | Notes |
 |-------|--------|-------|
 | Phase 0 | ✅ Completed | Grilling session resolved all architecture decisions |
-| Phase 1 | ⬜ Not Started | Plan approved, awaiting Phase 1 kickoff |
+| Phase 1 | 🟡 In Progress | Live infra A–F done (R2, DOMAINS, Access+service token, secrets, deploy, custom domain, Email Sending). **Step 1.9 inbound Email Routing BLOCKED** (apex-MX wizard — see Phase 1 Execution Notes); mailboxes/validation pending on it. |
 | Phase 2 | ⬜ Not Started | Requires Phase 1 completion. Architecture fully defined. |
 | Phase 3 | ⬜ Not Started | Requires Phase 2 stable (≥7 days) |
 | Phase 4 | ⬜ Deferred | Low priority. Activate after Phase 3. |

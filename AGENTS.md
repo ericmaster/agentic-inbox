@@ -82,3 +82,23 @@ npm run deploy      # wrangler deploy — DO NOT run unsupervised (live infra)
 - The bridge itself (`~/agentic/agentic-inbox-bridge/`) is built in PLAN Phase 2; this repo only
   emits webhooks to it.
 - Generated `worker-configuration.d.ts` and `build/` are gitignored.
+
+## Live deployment status (2026-06-16, Phase 1 supervised)
+
+**Deployed & live:** Worker `agentic-inbox` (bindings provisioned), R2 `agentic-inbox`, Access app
+`Agentic Inbox`→`ai.nimblersoft.com` (`POLICY_AUD=6189a26a…`, team `nimblersoft.cloudflareaccess.com`),
+service token `agentic-inbox-bridge`, custom domain `ai.nimblersoft.com` (proxied AAAA, web UI behind
+Access — 302→Access confirmed), Email **Sending** onboarded (`cf-bounce.*` DKIM/SPF/DMARC; no SPF
+collision). Secrets in Infisical **Agentic Inbox/prod**: `POLICY_AUD`, `TEAM_DOMAIN`, `WEBHOOK_URL`,
+`WEBHOOK_SECRET`, `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`.
+
+**Blocked:** inbound **Email Routing** (PLAN 1.9). `ai.nimblersoft.com` is a subdomain inside the
+`nimblersoft.com` (Google) zone; the Email Routing enable wizard is zone-level and forces apex MX +
+a duplicate apex SPF → would endanger Google Workspace. Stopped per guardrail. See PLAN.md "Execution
+Notes — Live Infra" for the resolution options (preferred: make `ai.nimblersoft.com` its own CF zone).
+
+**Gotchas learned:** (1) `@cloudflare/vite-plugin` strips `routes` from the generated deploy config →
+custom domains are managed via the Workers Domains API, not `wrangler.jsonc`. (2) Enabling Email
+Routing is **not** an API-token permission (only "Email Routing Rules" is) — it needs the dashboard or
+the `email_routing:write` OAuth scope. (3) Scoped `CLOUDFLARE_EMAIL_API_TOKEN` lives in Infisical
+**Nimblerbox/dev** (DNS + Email Routing Rules + Email Sending + Email Routing Addresses : Edit).
