@@ -6,12 +6,14 @@
 	"observability": {
 		"enabled": true
 	},
-	// Web UI served at ai.nimblersoft.com (behind Cloudflare Access). Creates a PROXIED
-	// custom-domain record that coexists with the ai.nimblersoft.com MX (Email Routing).
-	// Does NOT touch the nimblersoft.com apex.
-	"routes": [
-		{ "pattern": "ai.nimblersoft.com", "custom_domain": true }
-	],
+	// Web UI is served at ai.nimblersoft.com via a Worker CUSTOM DOMAIN (behind Cloudflare
+	// Access). NOTE: @cloudflare/vite-plugin strips `routes` from the generated deploy config
+	// (build/server/wrangler.json), so custom domains here are NOT applied by `npm run deploy`.
+	// The custom domain is managed out-of-band via the Workers Domains API:
+	//   PUT /accounts/{acct}/workers/domains {zone_id, hostname:"ai.nimblersoft.com",
+	//        service:"agentic-inbox", environment:"production"}
+	// It creates a PROXIED AAAA (100::) that coexists with the ai.nimblersoft.com MX and does
+	// NOT touch the nimblersoft.com apex.
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
