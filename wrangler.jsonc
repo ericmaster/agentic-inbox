@@ -14,6 +14,10 @@
 		// TEAM_DOMAIN may be the base Access URL or the full /cdn-cgi/access/certs URL.
 		// The worker now fails closed outside local development if Access is not configured.
 		//
+		// Nimblersoft bridge integration (optional, same pattern as POLICY_AUD): set
+		// WEBHOOK_URL as a var and WEBHOOK_SECRET as a secret in production —
+		// `wrangler secret put WEBHOOK_SECRET`. Leave both unset to disable webhooks.
+		//
 		// DOMAINS accepts a single domain or a comma-separated list to serve multiple
 		// domains from one instance, e.g. "example.com,another.com". Each domain needs its
 		// own Email Routing catch-all rule, and must be verified for outbound sending.

@@ -16,6 +16,7 @@ import {
 	listMailboxes,
 } from "./lib/email-helpers";
 import { SendEmailRequestSchema } from "./lib/schemas";
+import { notifyBridge } from "./lib/webhook";
 import { handleReplyEmail, handleForwardEmail } from "./routes/reply-forward";
 import { Folders } from "../shared/folders";
 import type { Env } from "./types";
@@ -215,12 +216,39 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 		]),
 	}, attachmentData);
 
+	const send = sendEmail(c.env.EMAIL, {
+		to, cc, bcc, from, subject, html, text,
+		attachments: attachments?.map((att) => ({ content: att.content, filename: att.filename, type: att.type, disposition: att.disposition || "attachment", contentId: att.contentId })),
+		...(in_reply_to ? { headers: buildThreadingHeaders(in_reply_to, references || []) } : {}),
+	});
+
+	// `?sync=true` (the bridge's approve path) blocks until delivery so the caller
+	// gets a definitive result in the HTTP response — no email-sent webhook is fired
+	// because the caller already knows it sent. The default async path (web UI)
+	// returns immediately and notifies the bridge via the email-sent webhook so it
+	// can dedup against a pending MM approval.
+	if (boolQuery(c, "sync") === true) {
+		try {
+			await send;
+		} catch (e) {
+			return c.json({ error: "Email delivery failed", detail: (e as Error).message }, 502);
+		}
+		return c.json({ id: messageId, status: "sent" }, 200);
+	}
+
 	c.executionCtx.waitUntil(
-		sendEmail(c.env.EMAIL, {
-			to, cc, bcc, from, subject, html, text,
-			attachments: attachments?.map((att) => ({ content: att.content, filename: att.filename, type: att.type, disposition: att.disposition || "attachment", contentId: att.contentId })),
-			...(in_reply_to ? { headers: buildThreadingHeaders(in_reply_to, references || []) } : {}),
-		}).catch((e) => console.error("Deferred email delivery failed:", (e as Error).message)),
+		send
+			.then(() => notifyBridge(c.env, {
+				event: "email-sent",
+				mailboxId,
+				emailId: messageId,
+				threadId: thread_id || in_reply_to || messageId,
+				to: toStr,
+				subject,
+				source: "web-ui",
+				timestamp: new Date().toISOString(),
+			}))
+			.catch((e) => console.error("Deferred email delivery failed:", (e as Error).message)),
 	);
 	return c.json({ id: messageId, status: "sent" }, 202);
 });
@@ -416,11 +444,26 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 		thread_id: threadId, message_id: originalMessageId, raw_headers: JSON.stringify(parsedEmail.headers),
 	}, attachmentData);
 
-	const agentStub = env.EMAIL_AGENT.get(env.EMAIL_AGENT.idFromName(mailboxId));
-	ctx.waitUntil(agentStub.fetch(new Request("https://agents/onNewEmail", {
-		method: "POST", headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ mailboxId, emailId: messageId, sender: (parsedEmail.from?.address || "").toLowerCase(), subject: parsedEmail.subject || "", threadId }),
-	})).catch((e) => console.error("Auto-draft trigger failed:", (e as Error).message)));
+	// Nimblersoft: the built-in Workers AI auto-draft is disabled — Hermes is the sole
+	// draft generator. Instead of triggering EMAIL_AGENT, fire a reference-only
+	// email-received webhook to the bridge, which fetches the full body via the API
+	// and runs the persona reply through Hermes /v1/responses.
+	ctx.waitUntil(notifyBridge(env, {
+		event: "email-received",
+		mailboxId,
+		emailId: messageId,
+		from: (parsedEmail.from?.address || "").toLowerCase(),
+		fromName: parsedEmail.from?.name || "",
+		to: allRecipients,
+		cc: ccRecipients,
+		subject: parsedEmail.subject || "",
+		threadId,
+		inReplyTo,
+		messageId: originalMessageId,
+		hasAttachments: attachmentData.length > 0,
+		attachmentCount: attachmentData.length,
+		timestamp: new Date().toISOString(),
+	}));
 }
 
 export { app, receiveEmail };
