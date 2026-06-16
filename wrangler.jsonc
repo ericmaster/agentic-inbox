@@ -6,6 +6,12 @@
 	"observability": {
 		"enabled": true
 	},
+	// Web UI served at ai.nimblersoft.com (behind Cloudflare Access). Creates a PROXIED
+	// custom-domain record that coexists with the ai.nimblersoft.com MX (Email Routing).
+	// Does NOT touch the nimblersoft.com apex.
+	"routes": [
+		{ "pattern": "ai.nimblersoft.com", "custom_domain": true }
+	],
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
