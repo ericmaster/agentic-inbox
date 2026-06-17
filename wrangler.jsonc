@@ -6,6 +6,14 @@
 	"observability": {
 		"enabled": true
 	},
+	// Web UI is served at ainbox.nimblerbot.com via a Worker CUSTOM DOMAIN (behind Cloudflare
+	// Access). NOTE: @cloudflare/vite-plugin strips `routes` from the generated deploy config
+	// (build/server/wrangler.json), so custom domains here are NOT applied by `npm run deploy`.
+	// The custom domain is managed out-of-band via the Workers Domains API:
+	//   PUT /accounts/{acct}/workers/domains {zone_id, hostname:"ainbox.nimblerbot.com",
+	//        service:"agentic-inbox", environment:"production"}
+	// It creates a PROXIED AAAA (100::) on the ainbox subdomain; the nimblerbot.com apex is
+	// reserved for mail (Email Routing MX + Email Sending), kept separate from the UI host.
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
@@ -13,7 +21,21 @@
 		// Production deploys must also define POLICY_AUD and TEAM_DOMAIN.
 		// TEAM_DOMAIN may be the base Access URL or the full /cdn-cgi/access/certs URL.
 		// The worker now fails closed outside local development if Access is not configured.
-		"DOMAINS": "example.com",
+		//
+		// Nimblersoft bridge integration (optional, same pattern as POLICY_AUD): set
+		// WEBHOOK_URL as a var and WEBHOOK_SECRET as a secret in production —
+		// `wrangler secret put WEBHOOK_SECRET`. Leave both unset to disable webhooks.
+		//
+		// DOMAINS accepts a single domain or a comma-separated list to serve multiple
+		// domains from one instance, e.g. "example.com,another.com". Each domain needs its
+		// own Email Routing rule(s) and must be onboarded for outbound sending.
+		// Phase 1 runs on the dedicated zone nimblerbot.com (its own CF zone, mail at the
+		// apex). The shared nimblersoft.com/Google zone was ruled out: CF refuses Email
+		// Routing while the apex has non-Cloudflare (Google Workspace) MX. ericmaster.ninja
+		// + meliruns.com remain live on Zoho (deferred to PLAN Phase 4).
+		"DOMAINS": "nimblerbot.com",
+		// EMAIL_ADDRESSES optionally restricts mailbox creation to specific addresses, and
+		// may span the configured domains, e.g. ["hello@example.com", "hi@another.com"].
 		"EMAIL_ADDRESSES": []
 	},
 	"send_email": [
