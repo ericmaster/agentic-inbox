@@ -111,14 +111,16 @@ export async function verifySvixSignature(
 
 	return signatureHeader
 		.split(" ")
-		.map((part) => part.split(",")[1])
+		.filter((part) => part.startsWith("v1,"))
+		.map((part) => part.slice(3))
 		.some((candidate) => !!candidate && safeEqual(candidate, expected));
 }
 
 /**
- * Hono handler for POST /webhooks/resend. Always returns 2xx for accepted-and-
+ * Hono handler for POST /webhooks/resend. Returns 2xx for accepted-and-
  * processed or intentionally-ignored events so Resend does not retry; returns
- * 4xx only for missing/invalid signatures.
+ * 4xx for missing/invalid signatures or stale timestamps; returns 503 when the
+ * secret is not configured (operator error — Resend should not retry either).
  */
 export async function handleResendWebhook(c: Context<{ Bindings: Env }>): Promise<Response> {
 	const secret = c.env.RESEND_WEBHOOK_SECRET;
@@ -132,6 +134,12 @@ export async function handleResendWebhook(c: Context<{ Bindings: Env }>): Promis
 	const svixSignature = c.req.header("svix-signature");
 	if (!svixId || !svixTimestamp || !svixSignature) {
 		return c.json({ error: "Missing Svix headers" }, 400);
+	}
+
+	// Reject stale webhooks (±5 min) to prevent signature replay attacks.
+	const tsNum = parseInt(svixTimestamp, 10);
+	if (isNaN(tsNum) || Math.abs(Date.now() / 1000 - tsNum) > 300) {
+		return c.json({ error: "Webhook timestamp out of tolerance" }, 400);
 	}
 
 	const body = await c.req.text();

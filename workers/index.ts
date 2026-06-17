@@ -227,13 +227,19 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 	// Correlate Resend's provider id with this email so POST /webhooks/resend can
 	// route delivery/bounce/complaint events back to the bridge. Cloudflare (incl.
 	// the fallback path) emits no such webhook, so nothing is mapped for it.
+	// KV write is best-effort: a failure must not turn a successful send into a 502
+	// (sync path) or suppress the email-sent webhook (async path).
 	const mapDelivery = async (res: SendEmailResult) => {
 		if (res.providerUsed === "resend" && res.providerId && c.env.DELIVERY_MAP) {
-			await c.env.DELIVERY_MAP.put(
-				res.providerId,
-				JSON.stringify({ mailboxId, emailId: messageId, threadId }),
-				{ expirationTtl: 60 * 60 * 24 * 3 }, // 3 days — beyond any delivery retry window
-			);
+			try {
+				await c.env.DELIVERY_MAP.put(
+					res.providerId,
+					JSON.stringify({ mailboxId, emailId: messageId, threadId }),
+					{ expirationTtl: 60 * 60 * 24 * 3 }, // 3 days — beyond any delivery retry window
+				);
+			} catch (e) {
+				console.error("DELIVERY_MAP.put failed (delivery telemetry lost):", (e as Error).message);
+			}
 		}
 	};
 
