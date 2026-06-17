@@ -474,6 +474,6 @@ After G is unblocked: literal per-mailbox routing rules (`sofia.luz@`/`silas.ver
 |-------|--------|-------|
 | Phase 0 | ✅ Completed | Grilling session resolved all architecture decisions |
 | Phase 1 | ✅ Complete | Live + validated on dedicated domain **`nimblerbot.com`** (web UI `ainbox.nimblerbot.com`; inbound + outbound tested internal & external, 2026-06-17). Shared `ai.nimblersoft.com` zone abandoned (apex-MX conflict). Pending follow-ups: decommission `ai.*` resources; optional signatures. |
-| Phase 2 | ⬜ Not Started | Requires Phase 1 completion. Architecture fully defined. |
+| Phase 2 | 🟩 Deployed (2026-06-17) | Bridge live at mail-bridge.nimblersoft.com (Docker + CF Tunnel; Uptime Kuma 31/32). Validated: inbound draft, owner auto-send, self-sent, web-UI dedup, restart recovery. Pending: human `approve`/correction WS test + least-privilege poster-token decision. |
 | Phase 3 | ⬜ Not Started | Requires Phase 2 stable (≥7 days) |
 | Phase 4 | ⬜ Deferred | Low priority. Activate after Phase 3. |
