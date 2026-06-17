@@ -229,10 +229,22 @@ DNS before/after on `ai.nimblersoft.com`: MX unchanged (mailgun, prio 10); **add
 
 **BLOCKER — Step 1.9 (inbound Email Routing):** `ai.nimblersoft.com` is a **subdomain inside the `nimblersoft.com` zone** (no separate zone). Cloudflare's Email Routing **enable wizard is zone-level and forces apex records** — it wanted to add `nimblersoft.com` MX→`route1/2/3.mx.cloudflare.net` (a mail-loss fallback trap behind Google's prio-0 MX) **and a duplicate apex SPF** (`v=spf1 include:_spf.mx.cloudflare.net` → two SPF records = permerror, degrades Google Workspace SPF). Enabling routing is **not exposed as an API-token permission** (only "Email Routing Rules" exists, which manages rules but not the enable toggle), so it can't be done apex-safely via the token. **Stopped per guardrail 1** (never touch `nimblersoft.com` apex MX).
 
-**Recommended resolution (decide before resuming G):**
-1. **Preferred — make `ai.nimblersoft.com` its own Cloudflare zone** (subdomain zone via NS delegation from `nimblersoft.com`). Then Email Routing operates on `ai.nimblersoft.com`'s *own* apex — MX live on `ai.nimblersoft.com`, fully isolated from `nimblersoft.com`/Google. Migration cost: re-create the Worker custom domain + Email Sending onboarding in the new zone.
-2. **Quick — enable via wizard, then surgically delete the CF apex MX + dup SPF + DKIM** (restores apex to Google baseline; routing-enabled flag persists; ~seconds window, low risk given Google prio-0 + DMARC p=none). Requires explicit apex-modification authorization.
-3. **API — `wrangler login` to grant `email_routing:write`, then enable with `skip_wizard`** (may avoid apex DNS entirely; headless OAuth-callback friction).
+**CONCLUSIVE (2026-06-17):** attempting to enable Email Routing on `nimblersoft.com` returns
+*"Existing non-Cloudflare MX records conflict with Email Routing. Remove or update them and try
+again."* — Cloudflare **refuses to enable Email Routing while the apex has foreign (Google) MX** and
+demands their removal. There is **no subdomain-only path on a shared zone**: routing is apex-gated and
+incompatible with keeping Google on the apex. The shared-`nimblersoft.com`-zone approach is therefore
+**ruled out** (the apex enable also errored cleanly — added nothing; apex verified pristine, 68 records).
+
+**DECISION:** use a **dedicated domain** for the agent inbox (its own Cloudflare zone, mail at the
+apex — the single-domain setup agentic-inbox is designed for). Eric is acquiring a new domain and
+adding it to Cloudflare. This also gives reputation/blast-radius isolation from Google Workspace.
+
+When the dedicated domain's zone is active in CF, resume Phase 1 for it (most work carries over —
+Worker code/R2/DOs/AI/bridge contracts unchanged; replay DOMAINS, Access app+POLICY_AUD, custom
+domain, Email Sending onboarding, then Email Routing on the apex + literal mailbox rules). The
+`ai.nimblersoft.com` Access app / custom domain / Email Sending onboarding become moot (decommission
+or repurpose the web-UI host as a follow-up).
 
 After G is unblocked: literal per-mailbox routing rules (`sofia.luz@`/`silas.vertiz@ → Worker`) instead of a zone-wide catch-all (avoids intercepting the `cf-bounce` MX); inbound handler has **no domain guard** — it stores only for addresses with an existing mailbox. Cutover = delete `ai.nimblersoft.com` mailgun MX (Eric authorized); rollback = re-add `mxa/mxb.eu.mailgun.org` prio 10.
 

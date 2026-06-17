@@ -92,10 +92,13 @@ Access — 302→Access confirmed), Email **Sending** onboarded (`cf-bounce.*` D
 collision). Secrets in Infisical **Agentic Inbox/prod**: `POLICY_AUD`, `TEAM_DOMAIN`, `WEBHOOK_URL`,
 `WEBHOOK_SECRET`, `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`.
 
-**Blocked:** inbound **Email Routing** (PLAN 1.9). `ai.nimblersoft.com` is a subdomain inside the
-`nimblersoft.com` (Google) zone; the Email Routing enable wizard is zone-level and forces apex MX +
-a duplicate apex SPF → would endanger Google Workspace. Stopped per guardrail. See PLAN.md "Execution
-Notes — Live Infra" for the resolution options (preferred: make `ai.nimblersoft.com` its own CF zone).
+**Blocked → re-platforming to a dedicated domain.** Inbound **Email Routing** (PLAN 1.9) is impossible
+on the shared `nimblersoft.com`/Google zone: enabling Email Routing errors with *"Existing
+non-Cloudflare MX records conflict with Email Routing"* — CF refuses while the apex has Google MX, and
+there's no subdomain-only path. **Decision: use a dedicated domain** (its own CF zone, mail at the
+apex). Eric is acquiring one. The `ai.nimblersoft.com` Access app / custom domain / Email Sending
+onboarding become moot once it lands (most other work — Worker, R2, DOs, bridge contracts — carries
+over). See PLAN.md "Execution Notes — Live Infra".
 
 **Gotchas learned:** (1) `@cloudflare/vite-plugin` strips `routes` from the generated deploy config →
 custom domains are managed via the Workers Domains API, not `wrangler.jsonc`. (2) Enabling Email
