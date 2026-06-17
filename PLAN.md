@@ -187,24 +187,24 @@ Two commits on the fork:
 1.13 Configure per-mailbox signatures in Agentic Inbox settings
 1.14 Validate: send test email to each mailbox, verify receipt, test send, test web UI
 
-**Definition of Done:** (status as of 2026-06-16 — see Execution Notes above)
-- [x] Agentic Inbox deployed and accessible at `https://ai.nimblersoft.com` (HTTP/web UI behind Access; 302→Access login confirmed)
-- [x] Multi-domain config active (DOMAINS lists `ai.nimblersoft.com` + the two deferred domains, but only `ai.nimblersoft.com` is cut over)
-- [x] Cloudflare Access configured (POLICY_AUD + TEAM_DOMAIN via Infisical)
-- [x] CF Access Service Token created and stored in Infisical (verified 200 against live API)
-- [x] Webhook secrets configured (WEBHOOK_URL + WEBHOOK_SECRET via Infisical + Worker)
-- [ ] ~~Email Routing catch-all rule~~ → **BLOCKED** (apex-MX wizard). Plan revised to literal per-mailbox rules; needs zone-strategy decision first.
-- [x] `ericmaster.ninja` + `meliruns.com` MX confirmed UNCHANGED (still Zoho) — cutover deferred to Phase 4
-- [~] DNS coexistence on `ai.nimblersoft.com`: **web UI loads ✅** (proxied AAAA + MX coexist); **inbound routing ⛔ blocked**
-- [x] Email Service verified for outbound sending on `ai.nimblersoft.com` (DKIM/SPF/DMARC via `cf-bounce.*`; status syncing→verified)
-- [ ] Test mailboxes created for sofia.luz@ / silas.vertiz@ai.nimblersoft.com — pending Step G
-- [ ] Per-mailbox signatures configured — pending Step G
+**Definition of Done:** ✅ **COMPLETE on the dedicated domain `nimblerbot.com`** (2026-06-17). The original `ai.nimblersoft.com` target was abandoned (shared-zone apex-MX conflict — see Execution Notes); items below reflect the `nimblerbot.com` deployment.
+- [x] Agentic Inbox deployed & accessible — web UI at `https://ainbox.nimblerbot.com` behind Access (service-token API returns 200; `GET /api/v1/config` → `{"domains":["nimblerbot.com"]}`)
+- [x] Single-domain config active (`DOMAINS=nimblerbot.com`; the two Zoho domains dropped from the list — still deferred to Phase 4)
+- [x] Cloudflare Access configured (new `POLICY_AUD=814e4b55…` + unchanged `TEAM_DOMAIN` via Infisical)
+- [x] CF Access Service Token (`agentic-inbox-bridge`) reused in the new app's policies (verified 200 against live API)
+- [x] Webhook secrets configured (WEBHOOK_URL + WEBHOOK_SECRET — carried over unchanged)
+- [x] Email Routing enabled on `nimblerbot.com` apex with **literal per-mailbox rules** (`sofia.luz@`/`silas.vertiz@ → Worker`); catch-all left disabled/drop
+- [x] `nimblersoft.com` (Google) + `ericmaster.ninja` + `meliruns.com` (Zoho) MX UNTOUCHED — different zones, nothing modified
+- [x] DNS coexistence: web UI on `ainbox.*` (proxied AAAA) + mail on the apex (MX) — clean separation
+- [x] Email Sending verified for outbound on `nimblerbot.com` (DKIM `cf2024-1` + `cf-bounce.*` SPF/DKIM + `_dmarc p=reject`; single clean apex SPF)
+- [x] Mailboxes created: `sofia.luz@nimblerbot.com`, `silas.vertiz@nimblerbot.com`
+- [ ] Per-mailbox signatures configured — optional, pending (offered to Eric)
 - [x] Built-in AI agent disabled (fork commit 47ef682 removes the auto-draft trigger)
-- [ ] Inbound: test email received, webhook fires, visible in web UI — **blocked on Step G**
-- [ ] Outbound: test email sent (both sync and async modes) and received externally — pending Step G
-- [ ] Eric validates: sends and receives test emails personally — pending Step G
+- [x] Inbound: external→Worker test received & stored (`eric→sofia.luz@`; CF-internal `sofia→silas` also stored)
+- [x] Outbound: sync send tested (`sofia→silas` internal + `sofia→eric@nimblersoft.com` external — landed in inbox, passes `p=reject`)
+- [x] Eric validated personally: received the outbound test in his inbox, sent an inbound that was confirmed stored
 - [x] `AGENTS.md` created in project root
-- [x] nimblersoft.com Google Workspace MX records confirmed UNMODIFIED (apex MX = aspmx.l.google.com, 1 SPF record, zero Cloudflare at apex)
+- [x] nimblersoft.com Google Workspace MX confirmed UNMODIFIED (separate zone entirely; never touched)
 
 **Risk Mitigation:**
 - OpenMail stays operational for the OTHER OpenMail mailboxes during Phase 1, but `ai.nimblersoft.com` itself is a **hard MX cutover** (single MX). Validate on a test address/subdomain before flipping the live MX; rollback = repoint MX to Mailgun.
@@ -247,6 +247,20 @@ domain, Email Sending onboarding, then Email Routing on the apex + literal mailb
 or repurpose the web-UI host as a follow-up).
 
 After G is unblocked: literal per-mailbox routing rules (`sofia.luz@`/`silas.vertiz@ → Worker`) instead of a zone-wide catch-all (avoids intercepting the `cf-bounce` MX); inbound handler has **no domain guard** — it stores only for addresses with an existing mailbox. Cutover = delete `ai.nimblersoft.com` mailgun MX (Eric authorized); rollback = re-add `mxa/mxb.eu.mailgun.org` prio 10.
+
+---
+
+**✅ RESOLVED — live on `nimblerbot.com` (2026-06-17, supervised):** Eric acquired `nimblerbot.com` (registrar name.com → Cloudflare nameservers; zone active in account `71f942c5…`, the **same** account as the Worker — required for custom domain / routing-to-Worker / Email Sending). Phase 1 was replayed on it; the address↔mailbox mapping is `mailboxId = lowercase email address` (`workers/index.ts` mailbox key `mailboxes/{email}.json`; `receiveEmail` uses `allRecipients[0]` since `EMAIL_ADDRESSES=[]`).
+
+- **Config:** `DOMAINS=nimblerbot.com`; redeployed (version `1fd09c31`, then a `secret put` version).
+- **Access:** new self-hosted app `Agentic Inbox (nimblerbot.com)` → `ainbox.nimblerbot.com` (`id=efb1a4c3…`, `POLICY_AUD=814e4b55…`); same `TEAM_DOMAIN`; same `agentic-inbox-bridge` service token (`id=658c03a3…`) added to its 2 policies (Eric email allow + bridge `non_identity`). `POLICY_AUD` written to the Worker secret + Infisical **Agentic Inbox/prod** (old `6189a26a…` overwritten).
+- **Custom domain:** `ainbox.nimblerbot.com` → Worker (proxied AAAA `100::`) via Workers Domains API. Apex reserved for mail only — no AAAA/MX coexistence needed (cleaner than the `ai.*` plan).
+- **Email Routing:** enabled on the apex (clean — fresh zone, no foreign-MX conflict). Literal rules `sofia.luz@`/`silas.vertiz@ → agentic-inbox`; catch-all disabled (drop).
+- **Email Sending:** `nimblerbot.com` onboarded. **Final apex DNS** (12 records): proxied AAAA `ainbox`; 3× MX `route1/2/3.mx.cloudflare.net`; apex SPF `v=spf1 include:_spf.mx.cloudflare.net ~all` (single — no collision); `_dmarc p=reject`; DKIM `cf2024-1._domainkey`; plus `cf-bounce.*` (MX + SPF + DKIM) for sending bounces.
+- **Mailboxes:** `sofia.luz@nimblerbot.com` (Sofia Luz), `silas.vertiz@nimblerbot.com` (Silas Vertiz).
+- **Validated:** `sofia→silas` (CF-internal, stored on first poll); `sofia→eric@nimblersoft.com` (external — landed in **inbox**, passes `p=reject`); `eric→sofia` (external inbound — stored); global NS/MX/SPF/DKIM/DMARC propagation confirmed via `8.8.8.8` + `1.1.1.1`.
+- **Teardown/rollback** (net-new system — no prior mail to revert): delete the 2 routing rules + 2 mailboxes, remove the Access app (`efb1a4c3…`) + custom domain, offboard Email Sending, disable Email Routing.
+- **Follow-ups:** (a) decommission the now-moot `ai.nimblersoft.com` Access app (`142c5fd6…`) / custom domain / Email Sending onboarding; (b) optional per-mailbox signatures; (c) Phase 2 bridge (`WEBHOOK_URL=https://mail-bridge.nimblersoft.com/…` not live yet — `notifyBridge` no-ops/logs on failure, so inbound/outbound are unaffected).
 
 ---
 
@@ -459,7 +473,7 @@ After G is unblocked: literal per-mailbox routing rules (`sofia.luz@`/`silas.ver
 | Phase | Status | Notes |
 |-------|--------|-------|
 | Phase 0 | ✅ Completed | Grilling session resolved all architecture decisions |
-| Phase 1 | 🟡 In Progress | Live infra A–F done (R2, DOMAINS, Access+service token, secrets, deploy, custom domain, Email Sending). **Step 1.9 inbound Email Routing BLOCKED** (apex-MX wizard — see Phase 1 Execution Notes); mailboxes/validation pending on it. |
+| Phase 1 | ✅ Complete | Live + validated on dedicated domain **`nimblerbot.com`** (web UI `ainbox.nimblerbot.com`; inbound + outbound tested internal & external, 2026-06-17). Shared `ai.nimblersoft.com` zone abandoned (apex-MX conflict). Pending follow-ups: decommission `ai.*` resources; optional signatures. |
 | Phase 2 | ⬜ Not Started | Requires Phase 1 completion. Architecture fully defined. |
 | Phase 3 | ⬜ Not Started | Requires Phase 2 stable (≥7 days) |
 | Phase 4 | ⬜ Deferred | Low priority. Activate after Phase 3. |

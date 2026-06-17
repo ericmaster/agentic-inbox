@@ -8,7 +8,9 @@ Working context for any agent operating on this project. Company-wide context li
 Self-hosted email for AI agents, replacing OpenMail. Fork of
 [`cloudflare/agentic-inbox`](https://github.com/cloudflare/agentic-inbox) running on Cloudflare
 Workers + Durable Objects (SQLite per mailbox) + R2 (attachments) + Email Routing + Email Service.
-Deployed at `https://ai.nimblersoft.com`.
+Deployed on the dedicated domain **`nimblerbot.com`** — web UI at `https://ainbox.nimblerbot.com`
+(behind Access), mailboxes at `*@nimblerbot.com`. (The earlier `ai.nimblersoft.com` target was
+abandoned — see PLAN.md; leftover CF resources await decommission.)
 
 - **Repo:** `ericmaster/agentic-inbox`, branch `feat/nimblersoft-multidomain-bridge`.
 - **Upstream base:** clean fork (last upstream commit `48039bb`, Merge PR #7).
@@ -51,7 +53,7 @@ committed to `wrangler.jsonc`):
 
 | Key | Where | Notes |
 |---|---|---|
-| `DOMAINS` | `wrangler.jsonc` var | `ai.nimblersoft.com,ericmaster.ninja,meliruns.com` — but only `ai.nimblersoft.com` is cut over in Phase 1 (the other two are live on Zoho; deferred to PLAN Phase 4). |
+| `DOMAINS` | `wrangler.jsonc` var | `nimblerbot.com` (Phase 1 live). `ericmaster.ninja` + `meliruns.com` are live on Zoho — deferred to PLAN Phase 4. |
 | `EMAIL_ADDRESSES` | `wrangler.jsonc` var | optional allow-list of creatable mailbox addresses. |
 | `POLICY_AUD`, `TEAM_DOMAIN` | secret/var (Infisical) | Cloudflare Access. |
 | `WEBHOOK_URL` | var (Infisical) | `https://mail-bridge.nimblersoft.com/webhooks/agentic-inbox`. |
@@ -74,8 +76,9 @@ npm run deploy      # wrangler deploy — DO NOT run unsupervised (live infra)
 
 - **Live infra steps are human-gated.** Deploy, DNS/MX cutover, Email Routing, Email Service
   verification, and Infisical secret writes are NOT done autonomously. See PLAN.md Phase 1.
-- `ai.nimblersoft.com` is a **single-MX hard cutover** (currently Mailgun/OpenMail). Validate on a
-  test address before flipping; rollback = repoint MX to Mailgun.
+- Inbound runs on the dedicated zone `nimblerbot.com` (mail at the apex). The shared
+  `ai.nimblersoft.com`/Google zone was abandoned — CF refuses Email Routing while the apex has
+  non-Cloudflare (Google) MX. See PLAN.md.
 - **Do not** enable Email Routing/catch-all on `ericmaster.ninja` or `meliruns.com` before PLAN
   Phase 4 — both are live on Zoho and would have their inbound hijacked.
 - `nimblersoft.com` MX (Google Workspace) must never be touched.
@@ -83,25 +86,29 @@ npm run deploy      # wrangler deploy — DO NOT run unsupervised (live infra)
   emits webhooks to it.
 - Generated `worker-configuration.d.ts` and `build/` are gitignored.
 
-## Live deployment status (2026-06-16, Phase 1 supervised)
+## Live deployment status (2026-06-17 — Phase 1 COMPLETE on `nimblerbot.com`)
 
-**Deployed & live:** Worker `agentic-inbox` (bindings provisioned), R2 `agentic-inbox`, Access app
-`Agentic Inbox`→`ai.nimblersoft.com` (`POLICY_AUD=6189a26a…`, team `nimblersoft.cloudflareaccess.com`),
-service token `agentic-inbox-bridge`, custom domain `ai.nimblersoft.com` (proxied AAAA, web UI behind
-Access — 302→Access confirmed), Email **Sending** onboarded (`cf-bounce.*` DKIM/SPF/DMARC; no SPF
-collision). Secrets in Infisical **Agentic Inbox/prod**: `POLICY_AUD`, `TEAM_DOMAIN`, `WEBHOOK_URL`,
-`WEBHOOK_SECRET`, `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`.
+**Live & validated** on the dedicated domain **`nimblerbot.com`** (its own CF zone, account
+`71f942c5…` — the **same** account as the Worker, required for custom domain / routing-to-Worker /
+Email Sending):
+- Worker `agentic-inbox` (`DOMAINS=nimblerbot.com`); R2 `agentic-inbox`; DOs MAILBOX/EMAIL_AGENT/EMAIL_MCP; AI; EMAIL send.
+- **Access** app `Agentic Inbox (nimblerbot.com)` → `ainbox.nimblerbot.com` (`id=efb1a4c3…`, `POLICY_AUD=814e4b55…`, team `nimblersoft.cloudflareaccess.com`); service token `agentic-inbox-bridge` (`658c03a3…`) in its policy. Service-token API → 200 confirmed.
+- **Custom domain** `ainbox.nimblerbot.com` (proxied AAAA) — apex reserved for mail only.
+- **Email Routing** on the apex; **literal** rules `sofia.luz@`/`silas.vertiz@ → Worker`; catch-all disabled (drop).
+- **Email Sending** onboarded. Apex DNS (12 recs): 3× MX `route*.mx.cloudflare.net`, single SPF `v=spf1 include:_spf.mx.cloudflare.net ~all`, `_dmarc p=reject`, DKIM `cf2024-1` + `cf-bounce.*` (MX/SPF/DKIM).
+- **Mailboxes:** `sofia.luz@nimblerbot.com`, `silas.vertiz@nimblerbot.com` (`mailboxId = lowercase address`).
+- **Secrets** (Worker + Infisical **Agentic Inbox/prod**): `POLICY_AUD` (now `814e4b55…`), `TEAM_DOMAIN`, `WEBHOOK_URL`, `WEBHOOK_SECRET`, `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`.
+- **Validated:** internal `sofia→silas`; external out `sofia→eric@nimblersoft.com` (landed in **inbox**, passes `p=reject`); external in `eric→sofia` (stored); global NS/MX/SPF/DKIM/DMARC propagation confirmed.
 
-**Blocked → re-platforming to a dedicated domain.** Inbound **Email Routing** (PLAN 1.9) is impossible
-on the shared `nimblersoft.com`/Google zone: enabling Email Routing errors with *"Existing
-non-Cloudflare MX records conflict with Email Routing"* — CF refuses while the apex has Google MX, and
-there's no subdomain-only path. **Decision: use a dedicated domain** (its own CF zone, mail at the
-apex). Eric is acquiring one. The `ai.nimblersoft.com` Access app / custom domain / Email Sending
-onboarding become moot once it lands (most other work — Worker, R2, DOs, bridge contracts — carries
-over). See PLAN.md "Execution Notes — Live Infra".
+**Abandoned — shared `ai.nimblersoft.com` zone:** CF refuses Email Routing while the `nimblersoft.com`
+apex has Google MX (*"Existing non-Cloudflare MX records conflict…"*). The `ai.nimblersoft.com` Access
+app (`142c5fd6…`) / custom domain / Email Sending onboarding are **moot and await decommission**.
+`nimblersoft.com` (Google) and the Zoho domains were never touched.
 
 **Gotchas learned:** (1) `@cloudflare/vite-plugin` strips `routes` from the generated deploy config →
-custom domains are managed via the Workers Domains API, not `wrangler.jsonc`. (2) Enabling Email
-Routing is **not** an API-token permission (only "Email Routing Rules" is) — it needs the dashboard or
-the `email_routing:write` OAuth scope. (3) Scoped `CLOUDFLARE_EMAIL_API_TOKEN` lives in Infisical
-**Nimblerbox/dev** (DNS + Email Routing Rules + Email Sending + Email Routing Addresses : Edit).
+custom domains via the Workers Domains API (wrangler OAuth token), not `wrangler.jsonc`. (2) Enabling
+Email Routing / onboarding Email Sending is **not** an API-token permission (only "Email Routing Rules"
+is) — done in the dashboard. (3) Zone + Worker must share a CF account. (4) `mailboxId = lowercase
+email address`. (5) Scoped `CLOUDFLARE_EMAIL_API_TOKEN` in Infisical **Nimblerbox/dev** (DNS + Email
+Routing Rules + Email Sending + Email Routing Addresses : Edit) manages rules; the wrangler OAuth token
++ broad `CLOUDFLARE_API_TOKEN` lack email-write scopes.
