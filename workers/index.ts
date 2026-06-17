@@ -6,7 +6,7 @@ import { type Context, Hono } from "hono";
 import { cors } from "hono/cors";
 import PostalMime from "postal-mime";
 import { z } from "zod";
-import { sendEmail } from "./email-sender";
+import { sendEmail, type SendEmailResult } from "./email-sender";
 import { storeAttachments, type StoredAttachment } from "./lib/attachments";
 import {
 	validateSender,
@@ -216,38 +216,60 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 		]),
 	}, attachmentData);
 
-	const send = sendEmail(c.env.EMAIL, {
+	const send = sendEmail(c.env, {
 		to, cc, bcc, from, subject, html, text,
 		attachments: attachments?.map((att) => ({ content: att.content, filename: att.filename, type: att.type, disposition: att.disposition || "attachment", contentId: att.contentId })),
 		...(in_reply_to ? { headers: buildThreadingHeaders(in_reply_to, references || []) } : {}),
 	});
 
-	// `?sync=true` (the bridge's approve path) blocks until delivery so the caller
-	// gets a definitive result in the HTTP response — no email-sent webhook is fired
-	// because the caller already knows it sent. The default async path (web UI)
-	// returns immediately and notifies the bridge via the email-sent webhook so it
-	// can dedup against a pending MM approval.
+	const threadId = thread_id || in_reply_to || messageId;
+
+	// Correlate Resend's provider id with this email so POST /webhooks/resend can
+	// route delivery/bounce/complaint events back to the bridge. Cloudflare (incl.
+	// the fallback path) emits no such webhook, so nothing is mapped for it.
+	const mapDelivery = async (res: SendEmailResult) => {
+		if (res.providerUsed === "resend" && res.providerId && c.env.DELIVERY_MAP) {
+			await c.env.DELIVERY_MAP.put(
+				res.providerId,
+				JSON.stringify({ mailboxId, emailId: messageId, threadId }),
+				{ expirationTtl: 60 * 60 * 24 * 3 }, // 3 days — beyond any delivery retry window
+			);
+		}
+	};
+
+	// `?sync=true` (the bridge's approve path) blocks until the provider accepts
+	// the message so the caller gets a definitive result in the HTTP response —
+	// no email-sent webhook is fired because the caller already knows it sent.
+	// The `provider` field tells the bridge whether the send went via Resend
+	// (delivery telemetry to follow) or fell back to Cloudflare (no telemetry).
+	// The default async path (web UI) returns immediately and notifies the bridge
+	// via the email-sent webhook so it can dedup against a pending MM approval.
 	if (boolQuery(c, "sync") === true) {
+		let res: SendEmailResult;
 		try {
-			await send;
+			res = await send;
 		} catch (e) {
 			return c.json({ error: "Email delivery failed", detail: (e as Error).message }, 502);
 		}
-		return c.json({ id: messageId, status: "sent" }, 200);
+		await mapDelivery(res);
+		return c.json({ id: messageId, status: "sent", provider: res.providerUsed }, 200);
 	}
 
 	c.executionCtx.waitUntil(
 		send
-			.then(() => notifyBridge(c.env, {
-				event: "email-sent",
-				mailboxId,
-				emailId: messageId,
-				threadId: thread_id || in_reply_to || messageId,
-				to: toStr,
-				subject,
-				source: "web-ui",
-				timestamp: new Date().toISOString(),
-			}))
+			.then(async (res) => {
+				await mapDelivery(res);
+				await notifyBridge(c.env, {
+					event: "email-sent",
+					mailboxId,
+					emailId: messageId,
+					threadId,
+					to: toStr,
+					subject,
+					source: "web-ui",
+					timestamp: new Date().toISOString(),
+				});
+			})
 			.catch((e) => console.error("Deferred email delivery failed:", (e as Error).message)),
 	);
 	return c.json({ id: messageId, status: "sent" }, 202);
