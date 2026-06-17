@@ -44,6 +44,25 @@
 			"remote": true
 		}
 	],
+	// Outbound provider is selected at deploy time, NOT committed here (same
+	// pattern as POLICY_AUD / WEBHOOK_URL — committing them as vars makes
+	// `wrangler types` emit literal types that conflict with the optional fields
+	// on Env). Set in the dashboard or via `wrangler deploy --var`:
+	//   EMAIL_PROVIDER=resend            (default "cloudflare" when unset)
+	//   EMAIL_FALLBACK_CLOUDFLARE=true   (fall back to the EMAIL binding on 429/5xx)
+	// And as secrets (`wrangler secret put …`):
+	//   RESEND_API_KEY, RESEND_WEBHOOK_SECRET
+	//
+	// DELIVERY_MAP correlates Resend's message id with {mailboxId, emailId,
+	// threadId} so POST /webhooks/resend can route delivery/bounce events to the
+	// bridge. Create the namespace and replace the placeholder id before deploy:
+	//   wrangler kv namespace create DELIVERY_MAP
+	"kv_namespaces": [
+		{
+			"binding": "DELIVERY_MAP",
+			"id": "a8f470765cc542e6884bbfcb8b2e37d3"
+		}
+	],
 	"r2_buckets": [
 		{
 			"binding": "BUCKET",

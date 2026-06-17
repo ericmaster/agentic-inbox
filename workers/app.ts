@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { jwtVerify, createRemoteJWKSet } from "jose";
 import { createRequestHandler } from "react-router";
 import { app as apiApp, receiveEmail } from "./index";
+import { handleResendWebhook } from "./lib/resendWebhook";
 import { EmailMCP } from "./mcp";
 import type { Env } from "./types";
 
@@ -44,6 +45,13 @@ const app = new Hono<{ Bindings: Env }>();
 
 // Cloudflare Access JWT validation middleware (production only)
 app.use("*", async (c, next) => {
+	// The Resend delivery webhook authenticates via its Svix HMAC signature, not
+	// CF Access — it carries no Access JWT, so exempt it here (and bypass it in
+	// the edge Access policy too). The handler verifies the signature itself.
+	if (c.req.path === "/webhooks/resend") {
+		return next();
+	}
+
 	// Skip validation in development
 	if (import.meta.env.DEV) {
 		return next();
@@ -89,6 +97,10 @@ app.all("/mcp", async (c) => {
 app.all("/mcp/*", async (c) => {
 	return mcpHandler.fetch(c.req.raw, c.env, c.executionCtx as ExecutionContext);
 });
+
+// Resend delivery-event webhook (Svix-signed, no CF Access). Registered before
+// the React Router catch-all so it is not swallowed by the SPA handler.
+app.post("/webhooks/resend", handleResendWebhook);
 
 // Mount the API routes
 app.route("/", apiApp);
