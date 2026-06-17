@@ -27,9 +27,9 @@ External Email → CF Email Routing → Agentic Inbox Worker → Durable Object 
   → fire-and-forget webhook → POST to bridge (reference only, no body)
   → bridge fetches email via API → Mattermost notification
   → Hermes /v1/responses → suggested reply → posted as threaded reply
-  → admin types "approve" in thread → MM outgoing webhook → bridge sends via API (?sync=true)
+  → admin types "approve" in thread → bot WS `posted` listener → bridge sends via API (?sync=true)
   → (parallel) web UI approval → Agentic Inbox sends → email-sent webhook → bridge dedup
-  → corrections: any non-bot reply in thread → MM outgoing webhook → bridge revises via Hermes
+  → corrections: any non-bot reply in thread → bot WS `posted` listener → bridge revises via Hermes
 ```
 
 ## Decisions (Phase 0 — Grilling Session)
@@ -39,8 +39,8 @@ External Email → CF Email Routing → Agentic Inbox Worker → Durable Object 
 | **Inbox domain** | `ai.nimblersoft.com` (NOT nimblersoft.com) | nimblersoft.com MX → Google Workspace. Cannot move without breaking Gmail. |
 | **nimblersoft.com email** | No change, no forwarding | Don't mix human Gmail mailboxes with AI agent mailboxes. |
 | **MM notifications** | Keep | Know when agent receives email and prepares to send. |
-| **Approval flow** | Exact-match "approve" reply + web UI | Zero polling. MM outgoing webhook delivers all channel posts to bridge. Bridge filters for "approve" (case-insensitive, trimmed, must be reply to known pending thread). Web UI approval coexists with dedup. |
-| **Correction detection** | MM outgoing webhook (no trigger word) | Outgoing webhook fires on every post in channel. Bridge filters: non-bot reply to known root_post_id = correction. Zero polling. |
+| **Approval flow** | Exact-match "approve" reply + web UI | Zero polling. Bot WebSocket `posted` listener delivers all channel posts incl. thread replies (with root_id) — MM outgoing webhooks cannot (no root_id, no thread-reply delivery). Bridge filters for "approve" (case-insensitive, trimmed, must be reply to known pending thread). Web UI approval coexists with dedup. |
+| **Correction detection** | Bot WebSocket `posted` listener | WS delivers every post incl. thread replies. Bridge filters: non-bot reply to known root_post_id = correction. Zero polling. |
 | **Hermes personas** | Keep — same integration path | Agent personas (Sofia/Silas) require context-aware replies via `/v1/responses`. |
 | **AI strategy** | Hermes sole draft generator; disable Agentic Inbox built-in AI | Workers AI drafts are generic. Remove `agentStub.fetch()` auto-draft trigger in fork. |
 | **Dual-approval dedup** | Agentic Inbox emits `email-sent` webhook | When web UI sends, Agentic Inbox fires webhook → bridge marks pending resolved → updates MM post with audit trail. |
@@ -129,7 +129,7 @@ Two commits on the fork:
 
 **Decisions Locked:**
 - [x] Approval: exact-match "approve" reply, zero polling
-- [x] Corrections: MM outgoing webhook (no trigger word), bridge filters internally
+- [x] Corrections: bot WS `posted` listener, bridge filters internally
 - [x] Dedup: Agentic Inbox `email-sent` webhook → bridge marks resolved
 - [x] Bridge deployment: Docker + CF Tunnel
 - [x] Bridge stack: Hono + TypeScript
@@ -302,7 +302,7 @@ After G is unblocked: literal per-mailbox routing rules (`sofia.luz@`/`silas.ver
     - Validates `X-Webhook-Secret` header
     - `email-received`: fetch email body via API → post MM notification → call Hermes → post suggestion as threaded reply → track in pending-replies
     - `email-sent`: find pending by threadId → mark as "sent via web UI" → update MM post with audit trail
-  - `POST /webhooks/mattermost` — receives all posts from configured channel(s) via MM outgoing webhook
+  - bot WebSocket `posted` listener — receives all posts from configured channel(s) via the MM WS API
     - Validates webhook token in payload
     - If message is exact-match "approve" (case-insensitive, trimmed) AND is a reply to a known root_post_id → approval flow
     - If message is a non-bot reply to a known root_post_id AND not "approve" → correction flow
@@ -322,8 +322,8 @@ After G is unblocked: literal per-mailbox routing rules (`sofia.luz@`/`silas.ver
   - **Self-sent detection:** if sender matches any configured mailbox address → notification only, no draft
   - **Owner auto-send:** `AUTO_REPLY_OWNER_EMAILS` config — matching senders skip approval, send immediately
 
-2.4 **Mattermost outgoing webhook registration:**
-  - Register outgoing webhook on email channel(s) — **no trigger word** (fires on all posts)
+2.4 **Mattermost bot WebSocket listener (replaces the outgoing-webhook idea):**
+  - Ensure the agent bot(s) are MEMBERS of the email channel(s); the bridge connects out to the MM WS API (no public endpoint / no outgoing webhook needed)
   - Webhook URL: `https://mail-bridge.nimblersoft.com/webhooks/mattermost`
   - Content type: `application/json`
   - Verify webhook fires reliably (test with manual post)
@@ -356,7 +356,7 @@ After G is unblocked: literal per-mailbox routing rules (`sofia.luz@`/`silas.ver
 **Definition of Done:**
 - [ ] Bridge running as Docker container behind CF Tunnel
 - [ ] Full inbound flow working: email → webhook → fetch → MM → Hermes draft → "approve" → sent
-- [ ] Correction flow working via MM outgoing webhook (no polling)
+- [ ] Correction flow working via bot WS `posted` listener (no polling)
 - [ ] Per-agent personas active (Sofia/Silas) with updated system prompts
 - [ ] Web UI + MM "approve" deduplication working (no duplicate sends)
 - [ ] Owner auto-send working
@@ -428,7 +428,7 @@ After G is unblocked: literal per-mailbox routing rules (`sofia.luz@`/`silas.ver
 | Phase 1 catch-all hijacks live Zoho mail on ericmaster.ninja/meliruns.com | Critical | Medium | Both domains' MX/catch-all cutover deferred to Phase 4; Phase 1 touches `ai.nimblersoft.com` only; Phase 1 DoD asserts their MX unchanged |
 | `ai.nimblersoft.com` MX cutover loses in-flight mail | Medium | Low | Hard single-MX cutover — validate on test address first; rollback = repoint MX to Mailgun |
 | Bridge webhook delivery fails (bridge down) | Medium | Low | Email still stored in DO. Bridge reconciles on restart. Uptime Kuma alerts. |
-| MM outgoing webhook misconfigured | Medium | Low | Test with manual post before go-live |
+| MM bot WS listener drops / half-open | Medium | Low | Heartbeat + auth-confirmed reconnect; Uptime Kuma on /health |
 | Dual-approval (MM "approve" + web UI) causes duplicate sends | Medium | Low | `email-sent` webhook + dedup lock in pending-replies.json |
 | CF Access Service Token expires/rotated | Medium | Low | Monitor token health. Stored in Infisical for easy rotation. |
 | Hermes persona integration API changes | Low | Low | `/v1/responses` contract is stable; conversation keying unchanged |
@@ -454,7 +454,7 @@ After G is unblocked: literal per-mailbox routing rules (`sofia.luz@`/`silas.ver
 | Cloudflare Access Service Token | 1 | Created for bridge API access |
 | Cloudflare Worker secrets (Infisical) | 1 | POLICY_AUD, TEAM_DOMAIN, WEBHOOK_URL, WEBHOOK_SECRET |
 | CF Tunnel config (`~/.cloudflared/config.yml`) | 2 | Add mail-bridge.nimblersoft.com route |
-| MM outgoing webhook config | 2 | Created for email channel(s) |
+| MM bot added to email channel(s) | 2 | Bot WS listener (no outgoing webhook) |
 | Uptime Kuma monitor | 2 | Add mail-bridge health check |
 | `nimbler-ops/AGENTS.md` | 2, 3 | Updated project tables |
 
