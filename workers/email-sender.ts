@@ -52,6 +52,10 @@ export interface SendEmailResult {
 	providerId?: string;
 	/** Which provider actually delivered the message (after any fallback). */
 	providerUsed: "resend" | "cloudflare";
+	/** True only when Resend was the configured provider but the send fell back
+	 *  to Cloudflare. Distinguishes "Cloudflare as primary" (normal) from
+	 *  "Cloudflare as last-resort fallback" (degraded, no delivery telemetry). */
+	fallback?: boolean;
 }
 
 /** Error thrown by the Resend path, annotated with the HTTP status (if any)
@@ -206,7 +210,7 @@ export async function sendEmail(
 				`Resend send failed (${(e as Error).message}); falling back to Cloudflare`,
 			);
 			const { messageId } = await sendViaCloudflare(env.EMAIL, params);
-			return { messageId, providerUsed: "cloudflare" };
+			return { messageId, providerUsed: "cloudflare", fallback: true };
 		}
 	}
 

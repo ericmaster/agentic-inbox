@@ -68,6 +68,7 @@ async function main() {
 		const res = await sendEmail(envFor({}, binding), PARAMS);
 		restoreFetch();
 		assert.equal(res.providerUsed, "cloudflare");
+		assert.equal(res.fallback, undefined, "primary Cloudflare is not a fallback");
 		assert.equal(state.called, true);
 		assert.equal(resendCalls, 0);
 	});
@@ -115,6 +116,7 @@ async function main() {
 		restoreFetch();
 		assert.equal(res.providerUsed, "cloudflare");
 		assert.equal(res.providerId, undefined);
+		assert.equal(res.fallback, true, "fallback flag must be set");
 		assert.equal(state.called, true, "Cloudflare fallback must fire");
 	});
 

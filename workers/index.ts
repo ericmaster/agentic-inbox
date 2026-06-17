@@ -252,7 +252,10 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 			return c.json({ error: "Email delivery failed", detail: (e as Error).message }, 502);
 		}
 		await mapDelivery(res);
-		return c.json({ id: messageId, status: "sent", provider: res.providerUsed }, 200);
+		return c.json(
+			{ id: messageId, status: "sent", provider: res.providerUsed, fallback: res.fallback ?? false },
+			200,
+		);
 	}
 
 	c.executionCtx.waitUntil(
