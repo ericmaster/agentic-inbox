@@ -284,6 +284,61 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 	return c.json({ id: messageId, status: "sent" }, 202);
 });
 
+// Nimblersoft: historical .eml import (one-time Zoho migration). Parses a raw
+// RFC822 message and stores it in INBOX *preserving the original Date header*
+// (unlike receiveEmail, which stamps receive-time). Fires NO email-received
+// webhook — this is archival, not live mail. Behind CF Access like all /api/v1.
+// Body: the raw .eml bytes (Content-Type ignored). The mailbox must already exist.
+app.post("/api/v1/mailboxes/:mailboxId/import", async (c: AppContext) => {
+	const mailboxId = c.req.param("mailboxId")!.toLowerCase();
+	if (!(await c.env.BUCKET.head(`mailboxes/${mailboxId}.json`))) {
+		return c.json({ error: "Mailbox does not exist" }, 404);
+	}
+	const raw = await c.req.arrayBuffer();
+	if (!raw || raw.byteLength === 0) return c.json({ error: "Empty body (expected raw .eml)" }, 400);
+
+	const parsed = await new PostalMime().parse(raw);
+	const messageId = crypto.randomUUID();
+	const stub = c.env.MAILBOX.get(c.env.MAILBOX.idFromName(mailboxId));
+
+	const allRecipients = (parsed.to || []).map((t) => t.address?.toLowerCase()).filter(Boolean) as string[];
+	const ccRecipients = (parsed.cc || []).map((e) => e.address?.toLowerCase()).filter(Boolean) as string[];
+	const bccRecipients = (parsed.bcc || []).map((e) => e.address?.toLowerCase()).filter(Boolean) as string[];
+
+	const attachmentData: StoredAttachment[] = [];
+	for (const att of parsed.attachments || []) {
+		const attId = crypto.randomUUID();
+		const filename = (att.filename || "untitled").replace(/[\/\\:*?"<>|\x00-\x1f]/g, "_");
+		await c.env.BUCKET.put(`attachments/${messageId}/${attId}/${filename}`, att.content);
+		attachmentData.push({
+			id: attId, email_id: messageId, filename, mimetype: att.mimeType,
+			size: typeof att.content === "string" ? att.content.length : att.content.byteLength,
+			content_id: att.contentId || null, disposition: att.disposition || "attachment",
+		});
+	}
+
+	const extractMsgId = (s: string) => { const m = s.match(/<([^>]+)>/); return m ? m[1] : s.trim().split(/\s+/)[0]; };
+	const inReplyTo = parsed.inReplyTo ? extractMsgId(parsed.inReplyTo) : null;
+	const emailReferences = parsed.references ? parsed.references.split(/\s+/).filter(Boolean).map(extractMsgId) : [];
+	const threadId = emailReferences[0] || inReplyTo || messageId;
+	const originalMessageId = parsed.messageId ? extractMsgId(parsed.messageId) : null;
+	// Preserve the email's own Date header; fall back to now only if absent/unparseable.
+	const parsedDate = parsed.date ? new Date(parsed.date) : null;
+	const date = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate.toISOString() : new Date().toISOString();
+
+	await stub.createEmail(Folders.INBOX, {
+		id: messageId, subject: parsed.subject || "",
+		sender: (parsed.from?.address || "").toLowerCase(),
+		recipient: allRecipients.join(", ") || mailboxId,
+		cc: ccRecipients.join(", ") || null, bcc: bccRecipients.join(", ") || null,
+		date, body: parsed.html || parsed.text || "",
+		in_reply_to: inReplyTo, email_references: emailReferences.length > 0 ? JSON.stringify(emailReferences) : null,
+		thread_id: threadId, message_id: originalMessageId, raw_headers: JSON.stringify(parsed.headers),
+	}, attachmentData);
+
+	return c.json({ id: messageId, imported: true, date, subject: parsed.subject || "" }, 201);
+});
+
 app.post("/api/v1/mailboxes/:mailboxId/drafts", async (c: AppContext) => {
 	const mailboxId = c.req.param("mailboxId")!;
 	const { to, cc, bcc, subject, body, in_reply_to, thread_id, draft_id } = DraftBody.parse(await c.req.json());
