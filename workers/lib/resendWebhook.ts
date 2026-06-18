@@ -24,6 +24,7 @@
 import type { Context } from "hono";
 import type { Env } from "../types";
 import { notifyBridge } from "./webhook";
+import { resendWebhookSecrets } from "./resendKeys";
 
 type DeliveryStatus = "delivered" | "bounced" | "complained" | "delayed";
 
@@ -123,9 +124,11 @@ export async function verifySvixSignature(
  * secret is not configured (operator error — Resend should not retry either).
  */
 export async function handleResendWebhook(c: Context<{ Bindings: Env }>): Promise<Response> {
-	const secret = c.env.RESEND_WEBHOOK_SECRET;
-	if (!secret) {
-		console.error("Resend webhook received but RESEND_WEBHOOK_SECRET is unset");
+	// One webhook URL serves every Resend account; verify against each configured
+	// signing secret (default + per-domain) — any match passes. See resendKeys.ts.
+	const secrets = resendWebhookSecrets(c.env);
+	if (secrets.length === 0) {
+		console.error("Resend webhook received but no RESEND_WEBHOOK_SECRET is configured");
 		return c.json({ error: "Webhook not configured" }, 503);
 	}
 
@@ -143,7 +146,13 @@ export async function handleResendWebhook(c: Context<{ Bindings: Env }>): Promis
 	}
 
 	const body = await c.req.text();
-	const valid = await verifySvixSignature(secret, svixId, svixTimestamp, body, svixSignature);
+	let valid = false;
+	for (const secret of secrets) {
+		if (await verifySvixSignature(secret, svixId, svixTimestamp, body, svixSignature)) {
+			valid = true;
+			break;
+		}
+	}
 	if (!valid) {
 		return c.json({ error: "Invalid signature" }, 401);
 	}
