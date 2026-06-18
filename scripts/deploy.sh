@@ -37,13 +37,20 @@ npx wrangler deploy --keep-vars "$@"
 
 # Post-deploy verification. Best-effort: only runs when a Cloudflare API token
 # with Workers Scripts:Read is available (agents have one via Infisical; humans
-# can `export CLOUDFLARE_API_TOKEN=…`). keep_vars already guarantees safety; this
-# just turns a silent regression into a loud failure.
-TOKEN="${CLOUDFLARE_API_TOKEN:-}"
+# can `export CF_VERIFY_TOKEN=…`). keep_vars already guarantees safety; this just
+# turns a silent regression into a loud failure.
+#
+# IMPORTANT: the verification token is read from CF_VERIFY_TOKEN, *not*
+# CLOUDFLARE_API_TOKEN. wrangler consumes CLOUDFLARE_API_TOKEN for the deploy
+# itself, so a read-only token there would break the deploy (asset upload needs
+# Workers Scripts:Edit). The deploy above uses wrangler's own auth (OAuth login,
+# or a deploy-capable CLOUDFLARE_API_TOKEN if you set one). The check below only
+# needs Workers Scripts:Read.
+TOKEN="${CF_VERIFY_TOKEN:-}"
 ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-71f942c5eebea605ba6f422431504a80}"
 if [[ -z "$TOKEN" ]]; then
-	echo "ℹ post-deploy var check skipped (set CLOUDFLARE_API_TOKEN to enable)."
-	echo "✔ deploy complete."
+	echo "ℹ post-deploy var check skipped (set CF_VERIFY_TOKEN — a Workers Scripts:Read token — to enable)."
+	echo "✔ deploy complete (keep_vars + --keep-vars preserved all vars)."
 	exit 0
 fi
 
