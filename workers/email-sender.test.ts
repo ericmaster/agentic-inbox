@@ -181,6 +181,53 @@ async function main() {
 		assert.equal(state.called, true);
 	});
 
+	await test("per-domain: mapped from-domain uses its own Resend key", async () => {
+		const { binding } = fakeBinding();
+		let auth = "";
+		mockFetch((_url, init) => {
+			auth = init.headers.Authorization;
+			return new Response(JSON.stringify({ id: "re_ninja" }), { status: 200 });
+		});
+		const res = await sendEmail(
+			envFor(
+				{
+					EMAIL_PROVIDER: "resend",
+					RESEND_API_KEY: "re_default",
+					RESEND_DOMAIN_KEYS: '{"ericmaster.ninja":"RESEND_ERICMASTER_NINJA"}',
+					RESEND_ERICMASTER_NINJA_API_KEY: "re_ninja_key",
+				},
+				binding,
+			),
+			{ ...PARAMS, from: { name: "Eric", email: "me@ericmaster.ninja" } },
+		);
+		restoreFetch();
+		assert.equal(res.providerUsed, "resend");
+		assert.equal(auth, "Bearer re_ninja_key", "must use the per-domain key, not the default");
+	});
+
+	await test("per-domain: unmapped from-domain falls back to RESEND_API_KEY", async () => {
+		const { binding } = fakeBinding();
+		let auth = "";
+		mockFetch((_url, init) => {
+			auth = init.headers.Authorization;
+			return new Response(JSON.stringify({ id: "re_def" }), { status: 200 });
+		});
+		await sendEmail(
+			envFor(
+				{
+					EMAIL_PROVIDER: "resend",
+					RESEND_API_KEY: "re_default",
+					RESEND_DOMAIN_KEYS: '{"ericmaster.ninja":"RESEND_ERICMASTER_NINJA"}',
+					RESEND_ERICMASTER_NINJA_API_KEY: "re_ninja_key",
+				},
+				binding,
+			),
+			PARAMS, // from sofia.luz@nimblerbot.com — not mapped
+		);
+		restoreFetch();
+		assert.equal(auth, "Bearer re_default", "unmapped domain uses the default account");
+	});
+
 	await test("provider=resend but no API key → throws", async () => {
 		const { binding } = fakeBinding();
 		await assert.rejects(

@@ -23,6 +23,7 @@
  */
 
 import type { Env } from "./types";
+import { resolveResendApiKey } from "./lib/resendKeys";
 
 export interface SendEmailParams {
 	to: string | string[];
@@ -196,11 +197,18 @@ export async function sendEmail(
 	const provider = env.EMAIL_PROVIDER ?? "cloudflare";
 
 	if (provider === "resend") {
-		if (!env.RESEND_API_KEY) {
-			throw new Error("EMAIL_PROVIDER=resend but RESEND_API_KEY is not set");
+		// Resolve the Resend account by sending domain — each domain may live in
+		// its own account (see lib/resendKeys.ts). Falls back to RESEND_API_KEY.
+		const apiKey = resolveResendApiKey(env, params.from);
+		if (!apiKey) {
+			throw new Error(
+				"EMAIL_PROVIDER=resend but no Resend API key is configured for " +
+					`'${typeof params.from === "string" ? params.from : params.from.email}' ` +
+					"(no per-domain RESEND_DOMAIN_KEYS match and RESEND_API_KEY is unset)",
+			);
 		}
 		try {
-			const { messageId } = await sendViaResend(env.RESEND_API_KEY, params);
+			const { messageId } = await sendViaResend(apiKey, params);
 			return { messageId, providerId: messageId, providerUsed: "resend" };
 		} catch (e) {
 			const canFallback =
