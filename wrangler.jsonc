@@ -3,6 +3,13 @@
 	"name": "agentic-inbox",
 	"compatibility_date": "2025-11-28",
 	"main": "./workers/app.ts",
+	// keep_vars: true is LOAD-BEARING. EMAIL_PROVIDER / EMAIL_FALLBACK_CLOUDFLARE are
+	// set as out-of-band Worker vars (NOT committed here — committing them breaks
+	// `wrangler types`). Without keep_vars, `wrangler deploy` DELETES vars not in this
+	// file before applying it, which would drop EMAIL_PROVIDER and silently revert live
+	// outbound to the 452-blocked Cloudflare path. keep_vars makes EVERY deploy path
+	// preserve them. Deploy via `npm run deploy` (scripts/deploy.sh) which also verifies.
+	"keep_vars": true,
 	"observability": {
 		"enabled": true
 	},
