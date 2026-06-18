@@ -69,7 +69,10 @@ npm install
 npm run typecheck   # wrangler types + tsc --noEmit
 npm run build       # react-router + vite build
 npm run dev         # local dev server (needs .dev.vars)
-npm run deploy      # wrangler deploy — DO NOT run unsupervised (live infra)
+npm run deploy      # scripts/deploy.sh: build + `wrangler deploy --keep-vars` + var-verify.
+                    # NEVER a bare `wrangler deploy` — it wipes out-of-band vars (EMAIL_PROVIDER)
+                    # and breaks live outbound. `keep_vars:true` in wrangler.jsonc guards raw
+                    # deploys too. Still live infra — deploy supervised.
 ```
 
 ## Known issues / watch-outs
