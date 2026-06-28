@@ -191,7 +191,7 @@ export class EmailMCP extends McpAgent<Env> {
 				originalEmailId: z
 					.string()
 					.describe("The ID of the email being replied to"),
-				to: z.string().email().describe("Recipient email address"),
+				to: z.email().describe("Recipient email address"),
 				subject: z.string().describe("Subject line (usually 'Re: ...')"),
 				bodyHtml: z
 					.string()
@@ -319,7 +319,7 @@ export class EmailMCP extends McpAgent<Env> {
 				originalEmailId: z
 					.string()
 					.describe("The ID of the email being replied to"),
-				to: z.string().email().describe("Recipient email address"),
+				to: z.email().describe("Recipient email address"),
 				subject: z.string().describe("Subject line"),
 				bodyHtml: z.string().describe("The HTML body of the reply"),
 			},
@@ -358,7 +358,7 @@ export class EmailMCP extends McpAgent<Env> {
 			"Send a new email (not a reply). Only call after getting confirmation.",
 			{
 				mailboxId: z.string().describe("The mailbox email address to send from"),
-				to: z.string().email().describe("Recipient email address"),
+				to: z.email().describe("Recipient email address"),
 				subject: z.string().describe("Subject line"),
 				bodyHtml: z.string().describe("The HTML body of the email"),
 			},
