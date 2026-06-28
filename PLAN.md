@@ -436,6 +436,7 @@ After G is unblocked: literal per-mailbox routing rules (`sofia.luz@`/`silas.ver
 | Zoho import not supported by Agentic Inbox | High | High | May need manual DO SQLite injection or direct import script — assess when Phase 4 activates |
 | nimblersoft.com MX accidentally modified | Critical | Low | Explicit gate in Phase 1 DoD — verify Google Workspace MX unmodified |
 | `?sync=true` send timeout (slow delivery) | Low | Low | Email Service delivery is typically <1s. Bridge has generous timeout. |
+| `ai` v7 migration blocked | Low | High | Carry forward risk: `@cloudflare/ai-chat` (latest 0.9.0) and `workers-ai-provider` (latest 3.2.1) cap `ai` peerDependency at `^6.0.0` |
 
 ## Files Likely to Change
 
