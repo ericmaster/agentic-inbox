@@ -27,7 +27,7 @@ type AppContext = Context<MailboxContext>;
 // -- Request body schemas (kept for validation) ---------------------
 
 const CreateMailboxBody = z.object({
-	email: z.string().email(),
+	email: z.email(),
 	name: z.string().min(1),
 	settings: z.record(z.any()).optional(), // unvalidated — agentSystemPrompt goes straight to AI
 });
