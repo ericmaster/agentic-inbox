@@ -24,7 +24,7 @@ export interface Env extends Cloudflare.Env {
 	// verification) — both Worker secrets. Unmapped domains use RESEND_API_KEY /
 	// RESEND_WEBHOOK_SECRET. The dynamically-named secrets are not declared here;
 	// see lib/resendKeys.ts. Leave unset for a single shared Resend account.
-	RESEND_DOMAIN_KEYS?: string;
+	RESEND_DOMAIN_KEYS: Cloudflare.Env["RESEND_DOMAIN_KEYS"];
 	// NOTE: the `DELIVERY_MAP` KV binding (Resend `re_…` id → {mailboxId,
 	// emailId, threadId}) is declared in wrangler.jsonc and therefore generated
 	// into Cloudflare.Env by `wrangler types` — do not redeclare it here.
