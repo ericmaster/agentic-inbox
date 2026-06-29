@@ -50,7 +50,7 @@ export function domainFromAddress(
 
 /** Parse `RESEND_DOMAIN_KEYS` into a domain→prefix map. Malformed/empty → {}. */
 export function parseResendDomainKeys(env: Env): Record<string, string> {
-	const raw = (env as DynamicEnv).RESEND_DOMAIN_KEYS;
+	const raw = (env as unknown as DynamicEnv).RESEND_DOMAIN_KEYS;
 	if (!raw) return {};
 	try {
 		const parsed = JSON.parse(raw) as unknown;
@@ -78,7 +78,7 @@ export function resolveResendApiKey(
 	const domain = domainFromAddress(from);
 	const prefix = parseResendDomainKeys(env)[domain];
 	if (prefix) {
-		const key = (env as DynamicEnv)[`${prefix}_API_KEY`];
+		const key = (env as unknown as DynamicEnv)[`${prefix}_API_KEY`];
 		if (key) return key;
 		console.error(
 			`RESEND_DOMAIN_KEYS maps ${domain} → ${prefix} but ${prefix}_API_KEY is unset; falling back to RESEND_API_KEY`,
@@ -97,7 +97,7 @@ export function resendWebhookSecrets(env: Env): string[] {
 	const secrets: string[] = [];
 	if (env.RESEND_WEBHOOK_SECRET) secrets.push(env.RESEND_WEBHOOK_SECRET);
 	for (const prefix of Object.values(parseResendDomainKeys(env))) {
-		const s = (env as DynamicEnv)[`${prefix}_WEBHOOK_SECRET`];
+		const s = (env as unknown as DynamicEnv)[`${prefix}_WEBHOOK_SECRET`];
 		if (s) secrets.push(s);
 	}
 	return secrets;

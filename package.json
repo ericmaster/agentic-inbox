@@ -5,7 +5,12 @@
 	"type": "module",
 	"cloudflare": {
 		"label": "Agentic Inbox",
-		"products": ["Workers", "Durable Objects", "R2", "Workers AI"],
+		"products": [
+			"Workers",
+			"Durable Objects",
+			"R2",
+			"Workers AI"
+		],
 		"bindings": {
 			"DOMAINS": {
 				"description": "Your domain with [Email Routing](https://developers.cloudflare.com/email-routing/) enabled (e.g. `example.com`). For multiple domains, pass a comma-separated list (e.g. `example.com,another.com`). After deploying, create a catch-all Email Routing rule pointing to this Worker for each domain."
@@ -50,7 +55,7 @@
 		"react-router": "^7.18.0",
 		"remark-gfm": "^4.0.1",
 		"workers-ai-provider": "^3.2.0",
-		"zod": "^3.25.76",
+		"zod": "^4.4.3",
 		"zustand": "^5.0.14"
 	},
 	"overrides": {
@@ -88,11 +93,11 @@
 		"@react-router/dev": "^7.18.0",
 		"@tailwindcss/vite": "^4.3.1",
 		"@types/dompurify": "^3.0.5",
-		"@types/node": "^20.19.37",
+		"@types/node": "^26.0.1",
 		"@types/react": "^19.2.17",
 		"@types/react-dom": "^19.1.2",
 		"tailwindcss": "^4.3.1",
-		"typescript": "^5.8.3",
+		"typescript": "^6.0.3",
 		"vite": "^6.3.3",
 		"vite-tsconfig-paths": "^5.1.4",
 		"wrangler": "^4.101.0"
