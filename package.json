@@ -24,7 +24,8 @@
 		"deploy:raw": "echo '⛔ Use: npm run deploy (scripts/deploy.sh, --keep-vars). A bare wrangler deploy would wipe out-of-band vars like EMAIL_PROVIDER and break live outbound. keep_vars:true in wrangler.jsonc guards raw deploys too.' && exit 1",
 		"dev": "react-router dev",
 		"preview": "npm run build && vite preview",
-		"typecheck": "npm run cf-typegen && react-router typegen && tsc -b"
+		"typecheck": "npm run cf-typegen && react-router typegen && tsc -b",
+		"test": "echo \"No test specified\""
 	},
 	"dependencies": {
 		"@ai-sdk/react": "^3.0.0",
