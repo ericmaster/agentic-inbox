@@ -5,7 +5,12 @@
 	"type": "module",
 	"cloudflare": {
 		"label": "Agentic Inbox",
-		"products": ["Workers", "Durable Objects", "R2", "Workers AI"],
+		"products": [
+			"Workers",
+			"Durable Objects",
+			"R2",
+			"Workers AI"
+		],
 		"bindings": {
 			"DOMAINS": {
 				"description": "Your domain with [Email Routing](https://developers.cloudflare.com/email-routing/) enabled (e.g. `example.com`). For multiple domains, pass a comma-separated list (e.g. `example.com,another.com`). After deploying, create a catch-all Email Routing rule pointing to this Worker for each domain."
@@ -19,7 +24,8 @@
 		"deploy:raw": "echo '⛔ Use: npm run deploy (scripts/deploy.sh, --keep-vars). A bare wrangler deploy would wipe out-of-band vars like EMAIL_PROVIDER and break live outbound. keep_vars:true in wrangler.jsonc guards raw deploys too.' && exit 1",
 		"dev": "react-router dev",
 		"preview": "npm run build && vite preview",
-		"typecheck": "npm run cf-typegen && react-router typegen && tsc -b"
+		"typecheck": "npm run cf-typegen && react-router typegen && tsc -b",
+		"test": "echo \"No test specified\""
 	},
 	"dependencies": {
 		"@ai-sdk/react": "^3.0.0",
@@ -50,13 +56,10 @@
 		"react-router": "^7.18.0",
 		"remark-gfm": "^4.0.1",
 		"workers-ai-provider": "^3.2.0",
-		"zod": "^3.25.76",
+		"zod": "^4.4.3",
 		"zustand": "^5.0.14"
 	},
 	"overrides": {
-		"@cloudflare/kumo": {
-			"zod": "$zod"
-		},
 		"@tiptap/core": "3.27.0",
 		"@tiptap/pm": "3.27.0",
 		"@tiptap/extensions": "3.27.0",
