@@ -47,7 +47,7 @@
 		"react": "^19.2.7",
 		"react-dom": "^19.2.7",
 		"react-markdown": "^10.1.0",
-		"react-router": "^7.18.0",
+		"react-router": "8.2.0",
 		"remark-gfm": "^4.0.1",
 		"workers-ai-provider": "^3.2.0",
 		"zod": "^3.25.76",
@@ -83,9 +83,9 @@
 		"@tiptap/extension-text": "3.27.0"
 	},
 	"devDependencies": {
-		"@cloudflare/vite-plugin": "^1.41.0",
+		"@cloudflare/vite-plugin": "1.44.0",
 		"@cloudflare/workers-types": "^4.20260617.1",
-		"@react-router/dev": "^7.18.0",
+		"@react-router/dev": "8.2.0",
 		"@tailwindcss/vite": "^4.3.1",
 		"@types/dompurify": "^3.0.5",
 		"@types/node": "^20.19.37",
@@ -93,7 +93,7 @@
 		"@types/react-dom": "^19.1.2",
 		"tailwindcss": "^4.3.1",
 		"typescript": "^5.8.3",
-		"vite": "^6.3.3",
+		"vite": "7.0.0",
 		"vite-tsconfig-paths": "^5.1.4",
 		"wrangler": "^4.101.0"
 	}
